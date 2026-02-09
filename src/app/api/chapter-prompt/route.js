@@ -64,7 +64,7 @@ async function generateChapter(prompt, number, roadmapId, session) {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gemini-2.0-flash",
+      model: "gemini-2.5-flash",
       messages: [
         {
           role: "system",
@@ -112,7 +112,6 @@ async function cleanupStuckChapters(session, roadmapId, number) {
   }
 }
 
-// POST request to generate chapter contents
 export async function POST(req) {
   const { prompt, number, roadmapId } = await req.json();
   const session = await getServerSession();
