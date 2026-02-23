@@ -73,15 +73,34 @@ export async function GET(request) {
                 .get();
         }
 
-        const courses = snapshot.docs.map((doc) => {
+        const courses = await Promise.all(snapshot.docs.map(async (doc) => {
             const data = doc.data();
+            const courseId = doc.id;
+
+            // Fetch progress for this user/course
+            let progress = 0;
+            try {
+                const progressRef = db
+                    .collection("ingested_courses")
+                    .doc(courseId)
+                    .collection("progress")
+                    .doc(userId);
+                const progressSnap = await progressRef.get();
+                if (progressSnap.exists) {
+                    progress = progressSnap.data().progress || 0;
+                }
+            } catch (err) {
+                console.error(`Error fetching progress for course ${courseId}:`, err);
+            }
+
             return {
-                id: doc.id,
+                id: courseId,
                 title: data.title,
                 description: data.description,
                 chapterCount: data.metadata?.chapterCount || 0,
                 totalWords: data.metadata?.totalWords || 0,
                 estimatedReadingTime: data.metadata?.estimatedReadingTime || 0,
+                progress,
                 source: {
                     fileName: data.source?.fileName || "",
                     fileType: data.source?.fileType || "",
@@ -89,7 +108,7 @@ export async function GET(request) {
                 status: data.status,
                 createdAt: data.createdAt?.toDate?.() || null,
             };
-        });
+        }));
 
         // Sort in memory by createdAt (newest first)
         courses.sort((a, b) => {

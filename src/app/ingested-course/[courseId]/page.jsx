@@ -22,26 +22,30 @@ import {
     Clock,
     FileText,
     BookMarked,
-    ChevronRight
+    ChevronRight,
+    CheckCircle2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import BookmarkButton from "@/components/chapter_content/BookmarkButton";
 import ChatBot from "@/components/chat/ChatBot";
+import { cn } from "@/lib/utils";
 
 export default function IngestedCoursePage() {
     const params = useParams();
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, getToken } = useAuth();
     const [course, setCourse] = useState(null);
     const [chapters, setChapters] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [updatingChapters, setUpdatingChapters] = useState(new Set());
 
     useEffect(() => {
         fetchCourse();
     }, [params.courseId]);
 
     const fetchCourse = async () => {
+        setLoading(true);
         try {
             const res = await fetch(`/api/ingested-courses/${params.courseId}`);
             if (res.ok) {
@@ -55,6 +59,57 @@ export default function IngestedCoursePage() {
             setError("Failed to load course");
         }
         setLoading(false);
+    };
+
+    const toggleChapterCompletion = async (e, chapterNumber, currentStatus) => {
+        e.stopPropagation();
+        if (!user || !getToken) return;
+
+        setUpdatingChapters(prev => {
+            const next = new Set(prev);
+            next.add(chapterNumber);
+            return next;
+        });
+
+        try {
+            const token = await getToken();
+            const res = await fetch(
+                `/api/ingested-courses/${params.courseId}/progress`,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        chapterNumber,
+                        completed: !currentStatus,
+                    }),
+                }
+            );
+
+            if (res.ok) {
+                const data = await res.json();
+                // Update local chapters state
+                setChapters(prev => prev.map(ch =>
+                    ch.chapterNumber === chapterNumber
+                        ? { ...ch, isCompleted: !currentStatus }
+                        : ch
+                ));
+                // Update overall progress if returned
+                if (data.progress !== undefined) {
+                    setCourse(prev => ({ ...prev, progress: data.progress }));
+                }
+            }
+        } catch (error) {
+            console.error("Failed to update progress:", error);
+        } finally {
+            setUpdatingChapters(prev => {
+                const next = new Set(prev);
+                next.delete(chapterNumber);
+                return next;
+            });
+        }
     };
 
     if (loading) {
@@ -147,6 +202,24 @@ export default function IngestedCoursePage() {
                                 </span>
                             )}
                         </div>
+
+                        {/* Overall Progress Section */}
+                        {course.progress > 0 && (
+                            <div className="mt-6 max-w-xs space-y-2">
+                                <div className="flex justify-between text-sm font-medium">
+                                    <span className="text-muted-foreground flex items-center gap-1.5">
+                                        Overall Progress
+                                    </span>
+                                    <span className="text-purple-500">{course.progress}%</span>
+                                </div>
+                                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-linear-to-r from-purple-500 to-blue-500 transition-all duration-700"
+                                        style={{ width: `${course.progress}%` }}
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </ScrollReveal>
 
@@ -170,15 +243,51 @@ export default function IngestedCoursePage() {
                             >
                                 <CardContent className="p-4">
                                     <div className="flex items-center gap-4">
-                                        <div className="w-10 h-10 rounded-xl bg-linear-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center group-hover:from-purple-500/30 group-hover:to-blue-500/30 transition-colors">
-                                            <span className="text-sm font-bold text-purple-500">
-                                                {chapter.chapterNumber}
-                                            </span>
+                                        <div className="w-10 h-10 rounded-xl bg-linear-to-br from-purple-500/20 to-blue-500/20 flex items-center justify-center group-hover:from-purple-500/30 group-hover:to-blue-500/30 transition-colors shrink-0">
+                                            {chapter.isCompleted ? (
+                                                <CheckCircle2 className="h-5 w-5 text-green-500" />
+                                            ) : (
+                                                <span className="text-sm font-bold text-purple-500">
+                                                    {chapter.chapterNumber}
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <h3 className="font-medium group-hover:text-purple-500 transition-colors truncate">
-                                                {chapter.title}
-                                            </h3>
+                                            <div className="flex items-center justify-between gap-4">
+                                                <h3 className={cn(
+                                                    "font-medium group-hover:text-purple-500 transition-colors truncate",
+                                                    chapter.isCompleted && "text-muted-foreground"
+                                                )}>
+                                                    {chapter.title}
+                                                    {chapter.isCompleted && (
+                                                        <span className="ml-2 text-[10px] font-medium text-green-500 uppercase tracking-wider">
+                                                            Completed
+                                                        </span>
+                                                    )}
+                                                </h3>
+                                                {user && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={(e) => toggleChapterCompletion(e, chapter.chapterNumber, chapter.isCompleted)}
+                                                        disabled={updatingChapters.has(chapter.chapterNumber)}
+                                                        className={cn(
+                                                            "h-8 px-2 text-[10px] font-semibold uppercase tracking-wider transition-colors shrink-0",
+                                                            chapter.isCompleted
+                                                                ? "text-red-500 hover:text-red-600 hover:bg-red-50"
+                                                                : "text-purple-500 hover:text-purple-600 hover:bg-purple-50"
+                                                        )}
+                                                    >
+                                                        {updatingChapters.has(chapter.chapterNumber) ? (
+                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                        ) : chapter.isCompleted ? (
+                                                            "Undo"
+                                                        ) : (
+                                                            "Complete"
+                                                        )}
+                                                    </Button>
+                                                )}
+                                            </div>
                                             {chapter.summary && (
                                                 <p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">
                                                     {chapter.summary}
@@ -191,7 +300,7 @@ export default function IngestedCoursePage() {
                                                 </span>
                                             </div>
                                         </div>
-                                        <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-purple-500 transition-colors" />
+                                        <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-purple-500 transition-colors shrink-0" />
                                     </div>
                                 </CardContent>
                             </Card>
@@ -213,7 +322,7 @@ export default function IngestedCoursePage() {
                                 className="bg-linear-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white px-8"
                             >
                                 <BookOpen className="h-5 w-5 mr-2" />
-                                Start Reading
+                                {course.progress > 0 ? "Resume Learning" : "Start Learning"}
                             </Button>
                         </div>
                     </ScrollReveal>

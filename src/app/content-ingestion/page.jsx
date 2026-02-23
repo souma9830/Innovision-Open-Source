@@ -459,6 +459,20 @@ export default function ContentIngestion() {
                                   {course.estimatedReadingTime} min
                                 </span>
                               </div>
+
+                              {/* Progress bar */}
+                              <div className="mt-3 space-y-1.5">
+                                <div className="flex justify-between text-[10px] font-medium">
+                                  <span className="text-muted-foreground">Progress</span>
+                                  <span className="text-purple-500">{course.progress || 0}%</span>
+                                </div>
+                                <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-linear-to-r from-purple-500 to-blue-500 transition-all duration-500"
+                                    style={{ width: `${course.progress || 0}%` }}
+                                  />
+                                </div>
+                              </div>
                             </div>
                             <Button
                               variant="ghost"
